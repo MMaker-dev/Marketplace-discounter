@@ -1,7 +1,11 @@
+import os
 import time
 from io import BytesIO
 
 import requests
+from dotenv import load_dotenv
+
+load_dotenv()
 
 WB_IMAGE_HEADERS = {
     "User-Agent": (
@@ -60,10 +64,15 @@ def _log_telegram_error(response: requests.Response) -> None:
 
 
 def _download_image(image_url: str) -> BytesIO | None:
+    headers = {
+        **WB_IMAGE_HEADERS,
+        "Cookie": os.getenv("WB_COOKIE", ""),
+        "x-queryid": os.getenv("WB_X_QUERYID", ""),
+    }
     try:
         response = requests.get(
             image_url,
-            headers=WB_IMAGE_HEADERS,
+            headers=headers,
             timeout=30,
         )
         if response.status_code == 200 and response.content:
