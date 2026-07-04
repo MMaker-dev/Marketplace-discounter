@@ -1,0 +1,24 @@
+name: Post Deals
+on:
+  schedule:
+    - cron: '*/30 * * * *'   # каждые 30 минут
+  workflow_dispatch:          # ручной запуск
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    concurrency: cancel-in-progress
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run main
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
+          WB_COOKIE: ${{ secrets.WB_COOKIE }}
+        run: python main.py
