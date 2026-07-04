@@ -1,7 +1,16 @@
-import traceback
+import time
+from io import BytesIO
 
 import requests
-import time
+
+WB_IMAGE_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/146.0.0.0 YaBrowser/26.4.0.0 Safari/537.36"
+    ),
+    "Referer": "https://www.wildberries.ru/",
+    "Accept": "image/webp,image/*,*/*",
+}
 
 
 def _escape_markdown(text: str) -> str:
@@ -45,6 +54,49 @@ def _send_delay() -> None:
     time.sleep(1 + (time.monotonic() % 1))
 
 
+def _log_telegram_error(response: requests.Response) -> None:
+    if response.status_code != 200:
+        print(f"Telegram API error: {response.status_code} {response.text}")
+
+
+def _download_image(image_url: str) -> BytesIO | None:
+    try:
+        response = requests.get(
+            image_url,
+            headers=WB_IMAGE_HEADERS,
+            timeout=30,
+        )
+        if response.status_code == 200 and response.content:
+            return BytesIO(response.content)
+    except requests.RequestException:
+        pass
+    return None
+
+
+def _send_message(token: str, payload: dict, caption: str) -> bool:
+    response = requests.post(
+        f"https://api.telegram.org/bot{token}/sendMessage",
+        data={**payload, "text": caption},
+        timeout=30,
+    )
+    _log_telegram_error(response)
+    return response.ok
+
+
+def _send_photo_file(
+    token: str, payload: dict, caption: str, image_data: BytesIO
+) -> bool:
+    image_data.seek(0)
+    response = requests.post(
+        f"https://api.telegram.org/bot{token}/sendPhoto",
+        data={**payload, "caption": caption},
+        files={"photo": ("photo.jpg", image_data, "image/jpeg")},
+        timeout=30,
+    )
+    _log_telegram_error(response)
+    return response.ok
+
+
 def send_to_telegram(
     product: dict,
     token: str,
@@ -62,36 +114,13 @@ def send_to_telegram(
 
     try:
         if image_url:
-            response = requests.post(
-                f"https://api.telegram.org/bot{token}/sendPhoto",
-                data={**payload, "photo": image_url, "caption": caption},
-                timeout=30,
-            )
-            if not response.ok:
-                print(f"Telegram API error: {response.status_code} {response.text}")
-            if response.ok:
-                sent = True
-            else:
-                response = requests.post(
-                    f"https://api.telegram.org/bot{token}/sendMessage",
-                    data={**payload, "text": caption},
-                    timeout=30,
-                )
-                if not response.ok:
-                    print(f"Telegram API error: {response.status_code} {response.text}")
-                sent = response.ok
-        else:
-            response = requests.post(
-                f"https://api.telegram.org/bot{token}/sendMessage",
-                data={**payload, "text": caption},
-                timeout=30,
-            )
-            if not response.ok:
-                print(f"Telegram API error: {response.status_code} {response.text}")
-            sent = response.ok
+            image_data = _download_image(image_url)
+            if image_data:
+                sent = _send_photo_file(token, payload, caption, image_data)
+
+        if not sent:
+            sent = _send_message(token, payload, caption)
     except requests.RequestException:
-        print("Исключение при отправке:")
-        traceback.print_exc()
         sent = False
 
     _send_delay()
