@@ -1,0 +1,6 @@
+.env
+price_history.json
+sent_ids.json
+__pycache__/
+*.pyc
+*.pyo
