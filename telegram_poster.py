@@ -79,8 +79,8 @@ def _download_image(image_url: str) -> BytesIO | None:
         )
         if response.status_code == 200 and response.content:
             return BytesIO(response.content)
-    except requests.RequestException:
-        pass
+    except requests.RequestException as e:
+        print(f"Ошибка скачивания фото: {e}")
     return None
 
 
@@ -98,14 +98,16 @@ def _send_photo_file(
     token: str, payload: dict, caption: str, image_data: BytesIO
 ) -> bool:
     image_data.seek(0)
-    response = requests.post(
+    print("Отправляю фото в Telegram...")
+    resp = requests.post(
         f"https://api.telegram.org/bot{token}/sendPhoto",
         data={**payload, "caption": caption},
         files={"photo": ("photo.jpg", image_data, "image/jpeg")},
         timeout=30,
     )
-    _log_telegram_error(response)
-    return response.ok
+    if resp.status_code != 200:
+        print(f"Ошибка Telegram при отправке фото: {resp.status_code} {resp.text}")
+    return resp.ok
 
 
 def send_to_telegram(
@@ -126,11 +128,16 @@ def send_to_telegram(
     try:
         if image_url:
             proxy_url = f"{PROXY_BASE}{image_url}"
+            print(f"Пытаюсь скачать фото через прокси: {proxy_url}")
             image_data = _download_image(proxy_url)
             if image_data:
+                img_data = image_data.getvalue()
+                print(f"Фото скачано успешно, размер {len(img_data)} байт")
                 sent = _send_photo_file(token, payload, caption, image_data)
 
         if not sent:
+            if image_url:
+                print("Фото не отправлено, перехожу к тексту")
             sent = _send_message(token, payload, caption)
     except requests.RequestException:
         sent = False
