@@ -7,6 +7,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+PROXY_BASE = "https://wb-proxy.nikon6233.workers.dev/?url="
+
 WB_IMAGE_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -76,13 +78,9 @@ def _download_image(image_url: str) -> BytesIO | None:
             timeout=30,
         )
         if response.status_code == 200 and response.content:
-            print(f"Изображение загружено, размер {len(response.content)} байт")
             return BytesIO(response.content)
-        print(
-            f"Ошибка загрузки изображения: код {response.status_code}, url: {image_url}"
-        )
     except requests.RequestException:
-        print(f"Ошибка загрузки изображения: код сеть, url: {image_url}")
+        pass
     return None
 
 
@@ -100,15 +98,13 @@ def _send_photo_file(
     token: str, payload: dict, caption: str, image_data: BytesIO
 ) -> bool:
     image_data.seek(0)
-    print("Отправляю фото...")
     response = requests.post(
         f"https://api.telegram.org/bot{token}/sendPhoto",
         data={**payload, "caption": caption},
         files={"photo": ("photo.jpg", image_data, "image/jpeg")},
         timeout=30,
     )
-    if response.status_code != 200:
-        print(f"Ответ на фото: {response.status_code}, {response.text}")
+    _log_telegram_error(response)
     return response.ok
 
 
@@ -129,7 +125,8 @@ def send_to_telegram(
 
     try:
         if image_url:
-            image_data = _download_image(image_url)
+            proxy_url = f"{PROXY_BASE}{image_url}"
+            image_data = _download_image(proxy_url)
             if image_data:
                 sent = _send_photo_file(token, payload, caption, image_data)
 
