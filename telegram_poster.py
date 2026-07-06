@@ -65,25 +65,6 @@ def _log_telegram_error(response: requests.Response) -> None:
         print(f"Telegram API error: {response.status_code} {response.text}")
 
 
-def _download_image(image_url: str) -> BytesIO | None:
-    headers = {
-        **WB_IMAGE_HEADERS,
-        "Cookie": os.getenv("WB_COOKIE", ""),
-        "x-queryid": os.getenv("WB_X_QUERYID", ""),
-    }
-    try:
-        response = requests.get(
-            image_url,
-            headers=headers,
-            timeout=30,
-        )
-        if response.status_code == 200 and response.content:
-            return BytesIO(response.content)
-    except requests.RequestException as e:
-        print(f"Ошибка скачивания фото: {e}")
-    return None
-
-
 def _send_message(token: str, payload: dict, caption: str) -> bool:
     response = requests.post(
         f"https://api.telegram.org/bot{token}/sendMessage",
@@ -129,8 +110,17 @@ def send_to_telegram(
         if image_url:
             proxy_url = f"{PROXY_BASE}{image_url}"
             print(f"Пытаюсь скачать фото через прокси: {proxy_url}")
-            image_data = _download_image(proxy_url)
-            if image_data:
+            headers = {
+                **WB_IMAGE_HEADERS,
+                "Cookie": os.getenv("WB_COOKIE", ""),
+                "x-queryid": os.getenv("WB_X_QUERYID", ""),
+            }
+            img_response = requests.get(proxy_url, headers=headers, timeout=30)
+            print(f"Статус ответа прокси: {img_response.status_code}")
+            print(f"Content-Type ответа: {img_response.headers.get('Content-Type')}")
+            print(f"Длина контента: {len(img_response.content)} байт")
+            if img_response.ok and img_response.content:
+                image_data = BytesIO(img_response.content)
                 img_data = image_data.getvalue()
                 print(f"Фото скачано успешно, размер {len(img_data)} байт")
                 sent = _send_photo_file(token, payload, caption, image_data)
@@ -139,7 +129,8 @@ def send_to_telegram(
             if image_url:
                 print("Фото не отправлено, перехожу к тексту")
             sent = _send_message(token, payload, caption)
-    except requests.RequestException:
+    except requests.RequestException as e:
+        print(f"Ошибка скачивания фото: {e}")
         sent = False
 
     _send_delay()
